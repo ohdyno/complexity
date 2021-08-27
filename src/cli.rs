@@ -81,8 +81,9 @@ fn render_standard(results: &[ParsedFile]) {
 fn render_csv(results: &[ParsedFile]) {
     for parsed_file in results {
         println!(
-            "{},{}",
+            "{},{},{}",
             parsed_file.complexity_score,
+            parsed_file.lines,
             parsed_file.path.display()
         );
     }

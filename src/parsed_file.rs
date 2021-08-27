@@ -8,6 +8,7 @@ use std::path::PathBuf;
 pub struct ParsedFile {
     pub path: PathBuf,
     pub complexity_score: f32,
+    pub lines: usize,
 }
 
 pub enum ParsedFileError {
@@ -38,6 +39,7 @@ impl ParsedFile {
         Ok(ParsedFile {
             path,
             complexity_score,
+            lines: stats.len(),
         })
     }
 }
