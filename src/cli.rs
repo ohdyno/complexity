@@ -1,12 +1,12 @@
 use crate::*;
+use clap::Parser;
+use crossbeam_channel::unbounded;
 use ignore::{DirEntry, WalkBuilder, WalkState};
 use serde_json;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-use structopt::StructOpt;
 
 pub fn run() {
-    let flags = flags::Flags::from_args();
+    let flags = flags::Flags::parse();
 
     match flags.cmd {
         Some(flags::Command::InstallConfiguration) => match configuration::install() {
@@ -36,23 +36,31 @@ fn calculate_complexity(flags: flags::Flags) {
         .for_each(|i| files_filter.only_paths.push(i));
 
     builder.filter_entry(move |e| files_filter.matches(e.path()));
+    builder.threads(num_cpus::get());
 
-    let results = Arc::new(Mutex::new(vec![]));
-    let scorer = flags.scorer;
+    let mut results = vec![];
+    let scorer = &flags.scorer;
+
+    let (sender, receiver) = unbounded();
 
     builder.build_parallel().run(|| {
-        Box::new(|result| {
+        let sender = sender.clone();
+
+        Box::new(move |result| {
             let mut scorer = build_scorer(&scorer);
             if let Some(parsed_file) = parse_dir_entry(&mut scorer, result) {
-                let mut results = results.lock().unwrap();
-                results.push(parsed_file);
+                sender.send(parsed_file).unwrap();
             }
 
             WalkState::Continue
         })
     });
 
-    let results = results.lock().unwrap();
+    drop(sender);
+
+    while let Ok(parsed_file) = receiver.recv() {
+        results.push(parsed_file);
+    }
 
     match flags.format {
         flags::Format::Standard => render_standard(&results),
@@ -69,12 +77,16 @@ fn build_scorer(algorithm: &flags::ScoringAlgorithm) -> Box<dyn scoring::ScoreVi
 }
 
 fn render_standard(results: &[ParsedFile]) {
+    use std::io::Write;
+    let mut lock = std::io::stdout().lock();
     for parsed_file in results {
-        println!(
+        writeln!(
+            lock,
             "{:>8} {}",
             format!("{:.2}", parsed_file.complexity_score),
             parsed_file.path.display()
-        );
+        )
+        .unwrap();
     }
 }
 
